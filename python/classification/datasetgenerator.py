@@ -11,11 +11,22 @@ IMAGE_DIR = "./garden"
 TARGET_TEMPLATES_DIR = "./target_templates"
 
 
-TARGET_EDGE_SIZE = 10
+TARGET_EDGE_SIZE = 20
 
 
 def main():
-    generate_dataset()
+    _plot_targets()
+
+
+def _plot_targets():
+    plt.figure(1)
+    targets = get_targets()
+    for i, (label, target) in enumerate(targets.items()):
+        plt.subplot(2, 3, i + 1)
+        plt.imshow(target)
+        plt.title(label)
+
+    plt.show()
 
 
 def generate_dataset():
@@ -26,6 +37,8 @@ def generate_dataset():
         patch = get_random_image_patch(images)
         plt.imshow(patch)
         plt.pause(1)
+        plt.show()
+        break
 
 
 def get_random_image_patch(images):
@@ -43,23 +56,35 @@ def get_random_image_patch(images):
 
 
 def get_targets():
-    target_templates = []
+    target_templates = {}
     files = os.listdir(TARGET_TEMPLATES_DIR)
     for filename in files:
         path = os.path.join(TARGET_TEMPLATES_DIR, filename)
-        target_templates.append(cv2.imread(path))
+        target_templates[filename[0].upper()] = cv2.imread(path)
 
-    h, w = target_templates[0].shape
-    target_image = np.zeros((h + 2*TARGET_EDGE_SIZE, w + 2*TARGET_EDGE_SIZE, 3))
+    h, w, _ = list(target_templates.values())[0].shape
+    target_image = np.zeros((h + 2*TARGET_EDGE_SIZE, w + 2*TARGET_EDGE_SIZE, 3), dtype=np.float32)
 
-    num_squares_h = h // TARGET_EDGE_SIZE
-    num_squares_w = w // TARGET_EDGE_SIZE
+    th, tw, _ = target_image.shape
+
+    num_squares_h = th // TARGET_EDGE_SIZE
+    num_squares_w = tw // TARGET_EDGE_SIZE
 
     for y in range(num_squares_h):
         for x in range(num_squares_w):
-            if x > 1 or y > 1 or x < (num_squares_w - 1) or y < (num_squares_h - 1):
-                continue
-            # TODO create checker board edge
+            if x in (0, num_squares_w - 1) or y in (0, num_squares_h - 1):
+                # this will create alternating squares
+                color = float((y % 2) ^ (x % 2))
+                target_image[y*TARGET_EDGE_SIZE:(y + 1)*TARGET_EDGE_SIZE, x*TARGET_EDGE_SIZE:(x + 1)*TARGET_EDGE_SIZE, :] = color
+
+    target_images = {}
+    for label, template in target_templates.items():
+        im = np.copy(target_image)
+        im[TARGET_EDGE_SIZE:h + TARGET_EDGE_SIZE,
+           TARGET_EDGE_SIZE:w + TARGET_EDGE_SIZE] = template.astype(np.float32) / 255.
+        target_images[label] = im
+
+    return target_images
 
 
 def read_all_images():
