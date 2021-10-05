@@ -13,13 +13,22 @@ TARGET_TEMPLATES_DIR = "./target_templates"
 
 TARGET_EDGE_SIZE = 20
 
+MAX_ROTATION_ANGLE_DEG = 25.
+
 
 def main():
-    #_plot_targets()
-    #generate_dataset()
-
     targets = get_targets()
-    _random_perspective_distortion(targets['A'])
+    _plot_random_targets(targets)
+
+
+def _plot_random_targets(targets):
+    plt.figure(1)
+
+    while True:
+        warped = _random_distortion(targets['A'])
+        plt.imshow(warped)
+        plt.pause(2)
+        plt.clf()
 
 
 def _plot_targets():
@@ -41,7 +50,7 @@ def generate_dataset():
     while True:
         patch = generate_random_ground_truth_image(targets, images)
         plt.imshow(patch)
-        plt.pause(1)
+        plt.pause(2)
 
 
 def get_random_image_patch(images):
@@ -66,49 +75,73 @@ def randomly_distort_target_image(target_image):
     pass
 
 
-def _random_perspective_distortion(target_image):
-    plt.figure(1)
-    #plt.subplot(4, 4, 1)
+def _random_perspective_distortion():
+    g, = np.random.normal(-0.002, 0.001, 1)
+    h, = np.random.normal(0., 0.0015, 1)
 
-    while True:
-        h, w, _ = target_image.shape
+    matrix = np.array([
+        [1., 0., 0.],
+        [0., 1., 0.],
+        [h,  g,  1.],
+    ])
 
-        g = float(random.randint(0, 1000) - 500) / 5e5
-        h = float(random.randint(0, 1000)- 500) / 5e5
+    return matrix
 
 
-        translation1 = np.array([
-            [1., 0., -h/2],
-            [0., 1., -w/2],
-            [0., 0., 1.],
-        ])
+def _random_rotation_distortion():
+    random_sample, = np.random.normal(0., 1./3., 1)
+    angle = (random_sample * MAX_ROTATION_ANGLE_DEG * np.pi) / 180.
 
-        matrix = np.array([
-            [1., 0., 0.],
-            [0., 1., 0.],
-            [h, g, 1.],
-        ])
+    matrix = np.array([
+        [np.cos(angle), -np.sin(angle), 0.],
+        [np.sin(angle), np.cos(angle),  0.],
+        [0.,            0.,             1.],
+    ])
 
-        translation2 = np.array([
-            [1., 0., h/2],
-            [0., 1., w/2],
-            [0., 0., 1.],
-        ])
+    return matrix
 
-        total_transformation = np.matmul(np.matmul(translation1, matrix), translation2)
-        total_transformation = total_transformation / total_transformation[2, 2]
-        #warped1 = cv2.warpPerspective(target_image, matrix, target_image.shape[:2])
 
-        #plt.subplot(1, 2, 1)
-        #plt.imshow(warped1)
+def _random_scale_transformation():
+    scale_factor, = np.random.uniform(0.05, 0.5, 1)
+    matrix = np.array([
+        [scale_factor, 0.,           0.],
+        [0.,           scale_factor, 0.],
+        [0.,           0.,           1.],
+    ])
 
-        warped2 = cv2.warpPerspective(target_image, total_transformation, target_image.shape[:2])
-        #plt.subplot(1, 2, 2)
-        plt.imshow(warped2)
-        plt.title(f"h={h:.5f}\ng={g:.5f}")
+    return matrix
 
-        plt.pause(1)
-        plt.clf()
+
+def _random_distortion(target_image):
+    h, w, _ = target_image.shape
+
+    translation = np.array([
+        [1., 0., h/2],
+        [0., 1., w/2],
+        [0., 0., 1.],
+    ])
+
+    inverse_translation = np.array([
+        [1., 0., -h/2],
+        [0., 1., -w/2],
+        [0., 0.,  1.],
+    ])
+
+    perspective_matrix = _random_perspective_distortion()
+    rotation_matrix = _random_rotation_distortion()
+    scale_matrix = _random_scale_transformation()
+
+    transformation_matrix = np.matmul(perspective_matrix, rotation_matrix)
+    transformation_matrix = np.matmul(transformation_matrix, scale_matrix)
+
+    total_transformation = np.matmul(
+        np.matmul(translation, transformation_matrix),
+        inverse_translation)
+    total_transformation = total_transformation / total_transformation[2, 2]
+
+    warped = cv2.warpPerspective(target_image, total_transformation, target_image.shape[:2])
+
+    return warped
 
 
 def get_targets():
