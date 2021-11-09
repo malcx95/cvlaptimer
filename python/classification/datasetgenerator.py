@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.signal as signal
 import cv2
 import os
 import random
@@ -26,7 +27,8 @@ def _plot_random_targets(targets):
 
     while True:
         warped = _random_distortion(targets['A'])
-        plt.imshow(warped)
+        blurred, kernel = _add_random_blur(warped)
+        plt.imshow(blurred)
         plt.pause(2)
         plt.clf()
 
@@ -73,6 +75,49 @@ def generate_random_ground_truth_image(targets, background_images):
 
 def randomly_distort_target_image(target_image):
     pass
+
+
+def _add_random_blur(target_image):
+    kernel_size = 10
+    blur_amount, = np.abs(np.random.normal(0.0001, 1., 1))
+    kernel = _get_gaussian_kernel(kernel_size, blur_amount)
+    motion_blur_amount, = np.random.uniform(0.5, 1., 1)
+    motion_blur_angle, = np.random.uniform(0., np.pi, 1)
+    translation = np.array([
+        [1., 0., kernel_size/2],
+        [0., 1., kernel_size/2],
+        [0., 0., 1.],
+    ])
+    inverse_translation = np.array([
+        [1., 0., -kernel_size/2],
+        [0., 1., -kernel_size/2],
+        [0., 0.,  1.],
+    ])
+    scale_matrix = np.array([
+        [1., 0., 0.],
+        [0., motion_blur_amount, 0.],
+        [0., 0., 1.],
+    ])
+    rotation_matrix = np.array([
+        [np.cos(motion_blur_angle), -np.sin(motion_blur_angle), 0.],
+        [np.sin(motion_blur_angle),  np.cos(motion_blur_angle), 0.],
+        [0.,                         0.,                        1.],
+    ])
+    total_transformation = np.matmul(translation,
+                                     np.matmul(np.matmul(rotation_matrix, scale_matrix),
+                                               inverse_translation))
+
+    kernel = cv2.warpAffine(kernel, total_transformation[:2, :], (kernel.shape[1], kernel.shape[0]))
+
+    blurred = signal.convolve2d(target_image[:, :, 0], kernel)
+    return blurred, kernel
+
+
+def _get_gaussian_kernel(size, sigma):
+    ax = np.linspace(-(size - 1.)/2., (size - 1) / 2., size)
+    gauss = np.exp(-0.5 * np.square(ax) / np.square(sigma))
+    kernel = np.outer(gauss, gauss)
+    return kernel / np.sum(kernel)
 
 
 def _random_perspective_distortion():
@@ -135,8 +180,7 @@ def _random_distortion(target_image):
     transformation_matrix = np.matmul(transformation_matrix, scale_matrix)
 
     total_transformation = np.matmul(
-        np.matmul(translation, transformation_matrix),
-        inverse_translation)
+        np.matmul(translation, transformation_matrix), inverse_translation)
     total_transformation = total_transformation / total_transformation[2, 2]
 
     warped = cv2.warpPerspective(target_image, total_transformation, target_image.shape[:2])
